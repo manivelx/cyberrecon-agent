@@ -10,6 +10,7 @@ from agents.recon_agent import ReconAgent
 from agents.reporter_agent import ReporterAgent
 from tools.audit_log import record_scan_audit
 from tools.mcp_server_tools import build_nmap_arguments, execute_scan
+from tools.nmap_tools import parse_nmap_xml
 from tools.security import sanitize_scan_request
 
 
@@ -24,22 +25,32 @@ class CyberReconPipeline:
         self.reporter_agent = ReporterAgent(output_dir=self.output_dir)
 
     def run(self, target_ip: str, scan_type: str = "version", demo_mode: bool = False) -> Path:
-        sanitized_request = sanitize_scan_request(target_ip=target_ip, scan_type=scan_type)
-        record_scan_audit(sanitized_request.target_ip, "pipeline.run", scan_type=sanitized_request.scan_type, status="requested")
+        try:
+            request = sanitize_scan_request(target_ip=target_ip, scan_type=scan_type)
+        except ValueError:
+            # Log the refusal without copying untrusted input into the log.
+            record_scan_audit("invalid", "pipeline.run", scan_type="invalid", status="rejected")
+            raise
 
-        if demo_mode:
-            from tools.nmap_tools import parse_nmap_xml
-            xml_output = execute_scan(
-                target_ip=sanitized_request.target_ip,
-                scan_type=sanitized_request.scan_type,
-                demo_mode=True,
-            )
-            scan_data = parse_nmap_xml(xml_output)
-        else:
-            scan_data = self.recon_agent.run(
-                target_ip=sanitized_request.target_ip,
-                nmap_args=build_nmap_arguments(sanitized_request.scan_type),
-            )
-        analysis = self.analyzer_agent.run(scan_data)
-        record_scan_audit(sanitized_request.target_ip, "pipeline.run", scan_type=sanitized_request.scan_type, status="completed")
-        return self.reporter_agent.run(target_ip=sanitized_request.target_ip, analysis=analysis)
+        record_scan_audit(request.target_ip, "pipeline.run", scan_type=request.scan_type, status="requested")
+        try:
+            if demo_mode:
+                xml_output = execute_scan(
+                    target_ip=request.target_ip,
+                    scan_type=request.scan_type,
+                    demo_mode=True,
+                )
+                scan_data = parse_nmap_xml(xml_output)
+            else:
+                scan_data = self.recon_agent.run(
+                    target_ip=request.target_ip,
+                    nmap_args=build_nmap_arguments(request.scan_type),
+                )
+            analysis = self.analyzer_agent.run(scan_data)
+            report_path = self.reporter_agent.run(target_ip=request.target_ip, analysis=analysis)
+        except Exception:
+            record_scan_audit(request.target_ip, "pipeline.run", scan_type=request.scan_type, status="failed")
+            raise
+
+        record_scan_audit(request.target_ip, "pipeline.run", scan_type=request.scan_type, status="completed")
+        return report_path
