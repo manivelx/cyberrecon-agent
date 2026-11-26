@@ -6,8 +6,17 @@ from dataclasses import dataclass
 from typing import Any
 
 
+# Nmap reports SMB as "microsoft-ds" and RDP as "ms-wbt-server".
+RISKY_SERVICES = {
+    "ftp", "telnet", "rdp", "ms-wbt-server", "smb", "microsoft-ds",
+    "netbios-ssn", "mongodb", "redis", "vnc",
+}
+
+
 @dataclass
 class AnalyzerAgent:
+    """Rule-based analyzer. It flags well-known risky ports and services."""
+
     name: str = "AnalyzerAgent"
 
     def run(self, nmap_data: dict[str, Any]) -> dict[str, Any]:
@@ -27,7 +36,7 @@ class AnalyzerAgent:
                 if port_id in {21, 23, 80, 8080, 3306, 5432, 6379, 9200, 27017, 445}:
                     risks.append(f"Port {port_id}/{service_name} is exposed and should be reviewed for access control.")
 
-                if service_name in {"ftp", "telnet", "rdp", "smb", "mongodb", "redis"}:
+                if service_name in RISKY_SERVICES:
                     risks.append(f"Service {service_name} on port {port_id} may require hardening or network restriction.")
 
         summary = {

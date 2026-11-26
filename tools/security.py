@@ -78,6 +78,12 @@ def sanitize_xml_data(xml_data: str) -> str:
     if not normalized.startswith("<"):
         raise ValueError("XML data must begin with an XML element.")
 
+    # DOCTYPE and ENTITY declarations enable entity-expansion attacks and
+    # are never present in real Nmap output, so refuse them before parsing.
+    lowered = normalized.lower()
+    if "<!doctype" in lowered or "<!entity" in lowered:
+        raise ValueError("XML data must not contain DOCTYPE or ENTITY declarations.")
+
     return normalized
 
 

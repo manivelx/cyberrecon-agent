@@ -44,8 +44,10 @@ def run_nmap_scan_with_mode(target_ip: str, nmap_args: str = "-sV -oX -", demo_m
             "python-nmap is not installed. Enable demo mode or install dependencies with pip install -r requirements.txt."
         ) from exc
 
+    # python-nmap already adds "-oX -" itself, so do not pass it twice.
+    scanner_arguments = nmap_args.replace("-oX -", "").strip()
     scanner = nmap.PortScanner()
-    scanner.scan(hosts=target_ip, arguments=nmap_args)
+    scanner.scan(hosts=target_ip, arguments=scanner_arguments)
     xml_output = scanner.get_nmap_last_output()
     if not xml_output:
         raise RuntimeError("Nmap did not return XML output")
@@ -53,7 +55,13 @@ def run_nmap_scan_with_mode(target_ip: str, nmap_args: str = "-sV -oX -", demo_m
 
 
 def parse_nmap_xml(xml_text: str) -> dict[str, Any]:
-    root = ET.fromstring(xml_text)
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as exc:
+        raise ValueError(f"Invalid Nmap XML: {exc}") from exc
+
+    if root.tag != "nmaprun":
+        raise ValueError("Invalid Nmap XML: root element must be <nmaprun>.")
     hosts: list[dict[str, Any]] = []
 
     for host_element in root.findall("host"):

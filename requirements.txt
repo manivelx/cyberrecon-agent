@@ -1,5 +1,3 @@
-google-adk
 mcp
 python-nmap
-google-generativeai
 python-dotenv
